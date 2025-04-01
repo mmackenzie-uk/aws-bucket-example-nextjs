@@ -1,95 +1,121 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+"use client"
+
+import AWS from 'aws-sdk';
+import { CommonPrefixList, ObjectList } from 'aws-sdk/clients/s3';
+import { useState, useEffect } from 'react';
+
+// Initialize the Amazon Cognito credentials provider
+AWS.config.region = "eu-west-2"; // Region
+AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+  IdentityPoolId: "---",
+});
+const Bucket = "---";
+// Create a new service object
+const s3 = new AWS.S3({
+  apiVersion: "2006-03-01",
+  params: { Bucket },
+});
+
+function ViewAlbum({ albumName } : { albumName: string}) {
+    const [photos, setPhotos] = useState<ObjectList>([]);
+    const [bucketUrl, setBucketUrl] = useState("");
+
+    const prefix = encodeURIComponent(albumName) + "/";
+
+    useEffect(() => {
+      s3.listObjects({ Prefix: prefix, Bucket }, function(err, data){
+
+         // @ts-ignore
+        const href = this.request.httpRequest.endpoint.href;
+        if (data.Contents) {
+          setPhotos(data.Contents);
+        }
+        setBucketUrl(href + Bucket + "/");
+      });
+    }, [albumName]);
+
+    const albumPhotosKey = encodeURIComponent(albumName) + "/"; 
+
+    return (
+      <>
+        <h2>{`Album: ${albumName}`}</h2>
+        {
+          (photos.length === 0) ? 
+              <p>The following photos are present.</p> 
+            : <p>There are no photos in this album.</p>
+        }
+        <div>
+        {
+          photos.map(photo => (photo.Key === prefix) ?
+            <span key={photo.Key}></span>
+            :
+            <span key={photo.Key}>
+              <div>
+                <br/>
+                <img 
+                  width={128} 
+                  height={128} 
+                  src={bucketUrl + encodeURIComponent(photo.Key!)} 
+                />
+              </div>
+              <div>
+                <span>
+                  {photo.Key!.replace(albumPhotosKey, "")}
+                </span>
+              </div>
+            </span>
+          )
+        }
+        </div>
+      </>
+    )
+}
+
+function ListAlbums({ onClick } : { onClick: (albumName: string) => void}) {
+    const [albums, setAlbums] = useState<CommonPrefixList>([]);
+
+    useEffect(() => {
+      s3.listObjects({ Delimiter: "/", Bucket }, (err, data) => {
+        if (data.CommonPrefixes) {
+          setAlbums(data.CommonPrefixes) 
+        }
+      });
+    }, []);
+
+    return (
+      <>
+        {
+          (albums.length === 0) ? 
+            <p>Click on an album name to view it.</p> 
+          : <p>You do not have any albums. Please Create album.</p>
+        }
+        {
+          albums.map((commonPrefix) => {
+            var prefix = commonPrefix.Prefix;
+            var albumName = decodeURIComponent(prefix!.replace("/", ""));
+            return <li key={albumName} style={{margin: "5px"}}>
+                    <button onClick={() => onClick(albumName)}>  
+                      {albumName}
+                    </button>
+                  </li>
+          })
+        }
+      </>
+    )
+}
 
 export default function Home() {
-  return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol>
-          <li>
-            Get started by editing <code>app/page.tsx</code>.
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [albumName, setAlbumName] = useState("album1");
 
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.secondary}
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className={styles.footer}>
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+  const handleAlbums = (albumName: string) => 
+      setAlbumName(albumName);
+
+  return (
+    <div>
+      <h1>Photo Album Viewer</h1>
+      <h2>Albums</h2>
+      <ListAlbums onClick={handleAlbums} />
+      <ViewAlbum albumName={albumName} />
     </div>
   );
 }
